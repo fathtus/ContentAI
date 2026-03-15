@@ -1,0 +1,12 @@
+.env
+.git
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+content_draft.md
+publishing_report.md
+*.db
+*.sqlite
+.DS_Store

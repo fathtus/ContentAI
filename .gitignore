@@ -1,0 +1,19 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# CrewAI runtime
+*.db
+*.sqlite
+
+# Output files
+content_draft.md
+publishing_report.md
+
+# OS
+.DS_Store

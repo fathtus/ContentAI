@@ -1,0 +1,19 @@
+# ContentAI — Requirements
+# Install with: pip install -r requirements.txt
+
+# CrewAI core
+crewai>=0.80.0
+crewai-tools>=0.20.0
+
+# Google Gemini LLM (via LiteLLM, bundled with crewai)
+google-generativeai>=0.8.0
+
+# Social media APIs
+tweepy>=4.14.0          # X (Twitter)
+requests>=2.31.0        # Facebook, Instagram, LinkedIn (Graph API / REST)
+
+# Web interface
+flask>=3.0.0
+
+# Utilities
+python-dotenv>=1.0.0
