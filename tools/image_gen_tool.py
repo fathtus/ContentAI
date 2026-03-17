@@ -20,7 +20,7 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 
 HF_MODEL = "black-forest-labs/FLUX.1-schnell"
-HF_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}/text-to-image"
+HF_URL = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL}"
 
 
 class ImageGenInput(BaseModel):
