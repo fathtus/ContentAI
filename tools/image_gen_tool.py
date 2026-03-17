@@ -38,14 +38,35 @@ class GenerateImageTool(BaseTool):
     args_schema: type[BaseModel] = ImageGenInput
 
     def _run(self, article_title: str, article_summary: str) -> str:
+        import random
+        weather_scenes = [
+            "sunny tropical beach with palm trees and golden light",
+            "misty rainy forest with colorful umbrella and puddles",
+            "snowy mountain peak with cozy scarf and snowflakes",
+            "stormy cliffside with dramatic clouds and lightning in the distance",
+            "golden autumn countryside with falling leaves and warm fog",
+            "desert at sunset with sand dunes and orange sky",
+            "magical cherry blossom park in spring breeze",
+            "cozy cabin porch during a heavy snowstorm with hot cocoa nearby",
+            "lush green Irish countryside under dramatic rainbow after rain",
+            "volcanic island at dusk with glowing lava and purple sky",
+            "bamboo forest in morning mist with soft golden rays",
+            "arctic tundra under shimmering northern lights aurora borealis",
+            "mediterranean rooftop terrace overlooking the sea at golden hour",
+            "flooded venetian street during a warm summer rain",
+            "savanna at sunrise with silhouette of acacia trees and wildlife",
+            "himalayan valley blanketed in thick fog and snow",
+            "tropical thunderstorm over a rice paddy field at night",
+        ]
+        scene = random.choice(weather_scenes)
         prompt = (
-            "cartoon flat illustration, bright vivid colors, white background, "
-            "cheerful small cartoon character wearing cool round sunglasses "
-            "pointing enthusiastically at a large colorful infographic panel, "
-            "friendly expressive character at bottom-left corner, "
-            "infographic panel with icons and simple visuals about the topic, "
-            "clean modern design, absolutely no text no words no letters, "
-            f"topic: {article_title[:100]}"
+            f"artistic digital painting, rich vivid colors, cinematic lighting, "
+            f"a person sitting outdoors working on a laptop, "
+            f"scenic natural setting: {scene}, "
+            "floating above the character are glowing semi-transparent chat bubble screens "
+            "with blurred chat message lines and interface elements, "
+            "holographic UI panels hovering in the air, soft glow effect, futuristic mood, "
+            "impressionist brushwork, painterly textures, highly detailed, no readable text"
         )
 
         hf_token = os.environ.get("HF_API_TOKEN")
