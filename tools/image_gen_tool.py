@@ -1,11 +1,13 @@
 """
 Image Generation Tool
 =====================
-Generates a cartoon-style illustration for a news article using Google Imagen 3.
+Generates a cartoon-style illustration for a news article using Microsoft Bing Image Creator.
+Requires BING_AUTH_COOKIE in .env (the _U cookie from bing.com after logging in).
 Saves the image locally and returns the file path.
 """
 
 import os
+import requests
 from pathlib import Path
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -19,16 +21,20 @@ class ImageGenInput(BaseModel):
 class GenerateImageTool(BaseTool):
     name: str = "Generate Article Image"
     description: str = (
-        "Generates a cartoon-style illustration for a news article using Google Imagen 3. "
+        "Generates a cartoon-style illustration for a news article using Microsoft Bing Image Creator. "
         "The image features a cheerful cartoon character with sunglasses pointing at the topic. "
         "Returns the local file path of the saved PNG image."
     )
     args_schema: type[BaseModel] = ImageGenInput
 
     def _run(self, article_title: str, article_summary: str) -> str:
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            return "ERROR: GOOGLE_API_KEY not set."
+        auth_cookie = os.environ.get("BING_AUTH_COOKIE")
+        if not auth_cookie:
+            return (
+                "ERROR: BING_AUTH_COOKIE not set. "
+                "Go to bing.com/images/create, log in, open DevTools → Application → Cookies, "
+                "copy the '_U' cookie value and add it to .env as BING_AUTH_COOKIE."
+            )
 
         prompt = (
             "Cartoon style, bright vivid colors, flat illustration, white background. "
@@ -36,37 +42,23 @@ class GenerateImageTool(BaseTool):
             "pointing enthusiastically with one hand at a large colorful infographic panel "
             "that visually explains the main topic. "
             "The character is friendly and expressive, standing at the bottom-left corner. "
-            "The infographic panel fills most of the image with icons, simple charts or visuals "
-            "related to the topic. Clean, modern, engaging design. Absolutely no text or words "
-            "anywhere in the image. "
-            f"Topic to illustrate: {article_title}. "
-            f"Context: {article_summary[:400]}"
+            "The infographic panel fills most of the image with icons and simple visuals "
+            "related to the topic. Clean, modern, engaging design. No text or words in the image. "
+            f"Topic: {article_title}. Context: {article_summary[:300]}"
         )
 
         try:
-            from google import genai
-            from google.genai import types
+            from BingImageCreator import ImageGen
 
-            client = genai.Client(api_key=api_key)
+            gen = ImageGen(auth_cookie=auth_cookie, quiet=True)
+            image_urls = gen.get_images(prompt)
 
-            # Use Gemini 2.0 Flash image generation (available on standard AI Studio keys)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash-preview-image-generation",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
+            if not image_urls:
+                return "ERROR generating image: Bing returned no images."
 
-            # Extract image bytes from response parts
-            image_bytes = None
-            for part in response.candidates[0].content.parts:
-                if part.inline_data is not None:
-                    image_bytes = part.inline_data.data
-                    break
-
-            if not image_bytes:
-                return "ERROR generating image: No image returned in response."
+            # Download the first image
+            response = requests.get(image_urls[0], timeout=30)
+            response.raise_for_status()
 
             # Save image to disk
             images_dir = Path("images")
@@ -77,12 +69,12 @@ class GenerateImageTool(BaseTool):
                 [:50].strip().replace(" ", "_")
             )
             image_path = images_dir / f"{safe_title}.png"
-            image_path.write_bytes(image_bytes)
+            image_path.write_bytes(response.content)
 
             print(f"[ImageGen] Saved image: {image_path}")
             return str(image_path)
 
         except ImportError:
-            return "ERROR: google-genai not installed. Run: pip install google-genai"
+            return "ERROR: BingImageCreator not installed. Run: pip install BingImageCreator"
         except Exception as e:
             return f"ERROR generating image: {e}"
