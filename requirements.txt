@@ -8,8 +8,6 @@ crewai-tools>=0.20.0
 # Google Gemini LLM (via LiteLLM, bundled with crewai)
 google-generativeai>=0.8.0
 
-# Microsoft Bing Image Creator (DALL-E powered, free with Microsoft account)
-BingImageCreator>=0.4.0
 
 # Social media APIs
 tweepy>=4.14.0          # X (Twitter)
