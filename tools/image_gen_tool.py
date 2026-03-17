@@ -48,15 +48,25 @@ class GenerateImageTool(BaseTool):
             from google.genai import types
 
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_images(
-                model="imagen-3.0-generate-002",
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="1:1",
-                    safety_filter_level="BLOCK_ONLY_HIGH",
+
+            # Use Gemini 2.0 Flash image generation (available on standard AI Studio keys)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-preview-image-generation",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
                 ),
             )
+
+            # Extract image bytes from response parts
+            image_bytes = None
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None:
+                    image_bytes = part.inline_data.data
+                    break
+
+            if not image_bytes:
+                return "ERROR generating image: No image returned in response."
 
             # Save image to disk
             images_dir = Path("images")
@@ -67,7 +77,6 @@ class GenerateImageTool(BaseTool):
                 [:50].strip().replace(" ", "_")
             )
             image_path = images_dir / f"{safe_title}.png"
-            image_bytes = response.generated_images[0].image.image_bytes
             image_path.write_bytes(image_bytes)
 
             print(f"[ImageGen] Saved image: {image_path}")
