@@ -17,6 +17,14 @@ class PostInput(BaseModel):
     content: str = Field(description="The text content to post")
 
 
+class FacebookPostInput(BaseModel):
+    content: str = Field(description="The text content to post")
+    image_path: str = Field(
+        default="",
+        description="Optional local file path to a PNG/JPG image to attach to the post",
+    )
+
+
 class InstagramPostInput(BaseModel):
     content: str = Field(description="The caption text for the Instagram post")
     image_url: str = Field(
@@ -68,37 +76,52 @@ class PostToXTool(BaseTool):
 
 class PostToFacebookTool(BaseTool):
     name: str = "Post to Facebook"
-    description: str = "Posts content to a Facebook Page."
-    args_schema: type[BaseModel] = PostInput
+    description: str = (
+        "Posts content to a Facebook Page. "
+        "If image_path is provided, the post will include the image as a photo post. "
+        "image_path must be a local file path to a PNG or JPG image."
+    )
+    args_schema: type[BaseModel] = FacebookPostInput
 
-    def _run(self, content: str) -> str:
+    def _run(self, content: str, image_path: str = "") -> str:
         page_id    = os.environ.get("FACEBOOK_PAGE_ID")
         page_token = os.environ.get("FACEBOOK_PAGE_TOKEN")
 
         if not all([page_id, page_token]):
             return (
                 "SIMULATED POST TO FACEBOOK:\n"
-                f"{content}\n\n"
+                f"{content}\n"
+                f"Image: {image_path or '(no image)'}\n\n"
                 "[Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_TOKEN in .env to enable real posting]"
             )
 
-        url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
-
-        # Use multipart/form-data to match: curl -F "message=..." -F "access_token=..."
-        files = {
-            "message":      (None, content),
-            "access_token": (None, page_token),
-        }
-
         try:
-            response = requests.post(url, files=files, timeout=15)
+            # ── Photo post (with image) ────────────────────────────────────
+            if image_path and os.path.isfile(image_path):
+                url = f"https://graph.facebook.com/v25.0/{page_id}/photos"
+                with open(image_path, "rb") as img_file:
+                    files = {
+                        "source":       (os.path.basename(image_path), img_file, "image/png"),
+                        "message":      (None, content),
+                        "access_token": (None, page_token),
+                    }
+                    response = requests.post(url, files=files, timeout=30)
+            else:
+                # ── Text-only post ─────────────────────────────────────────
+                url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
+                files = {
+                    "message":      (None, content),
+                    "access_token": (None, page_token),
+                }
+                response = requests.post(url, files=files, timeout=15)
+
             if not response.ok:
                 detail = response.json().get("error", {})
                 return (
                     f"ERROR posting to Facebook: {response.status_code} — "
                     f"{detail.get('message', response.text)}"
                 )
-            post_id = response.json().get("id", "unknown")
+            post_id = response.json().get("id", response.json().get("post_id", "unknown"))
             return f"Successfully posted to Facebook! Post ID: {post_id}"
         except requests.RequestException as e:
             return f"ERROR posting to Facebook: {e}"

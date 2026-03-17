@@ -8,6 +8,9 @@ crewai-tools>=0.20.0
 # Google Gemini LLM (via LiteLLM, bundled with crewai)
 google-generativeai>=0.8.0
 
+# Google Imagen 3 image generation
+google-genai>=1.0.0
+
 # Social media APIs
 tweepy>=4.14.0          # X (Twitter)
 requests>=2.31.0        # Facebook, Instagram, LinkedIn (Graph API / REST)

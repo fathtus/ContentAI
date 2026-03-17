@@ -5,7 +5,8 @@ Pipeline:
   1. Fetch latest news from NewsData.io
   2. Content Writer Agent  : Uses Google Gemini to rewrite each article
                              into platform-specific posts (X, Facebook, Instagram, LinkedIn)
-  3. Publisher Agent       : Posts the adapted content to all 4 platforms
+  3. Image Creator Agent   : Generates a cartoon illustration per article using Google Imagen 3
+  4. Publisher Agent       : Posts content + images to all 4 platforms
 
 Usage:
   python main.py [--topic "AI news"] [--dry-run]
@@ -19,6 +20,7 @@ from crewai import Agent, Task, Crew, Process, LLM
 
 from tools import (
     NewsDataTool,
+    GenerateImageTool,
     PostToXTool,
     PostToFacebookTool,
     PostToInstagramTool,
@@ -32,7 +34,7 @@ load_dotenv()
 def check_env():
     missing = []
     required = {
-        "GOOGLE_API_KEY": "Google Gemini LLM (get at https://aistudio.google.com/)",
+        "GOOGLE_API_KEY": "Google Gemini LLM + Imagen (get at https://aistudio.google.com/)",
         "NEWSDATA_API_KEY": "NewsData.io news feed (get at https://newsdata.io/)",
     }
     for key, desc in required.items():
@@ -66,6 +68,7 @@ llm = LLM(
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 news_tool       = NewsDataTool()
+image_gen_tool  = GenerateImageTool()
 post_x_tool     = PostToXTool()
 post_fb_tool    = PostToFacebookTool()
 post_ig_tool    = PostToInstagramTool()
@@ -97,17 +100,38 @@ content_writer_agent = Agent(
     max_iter=8,
 )
 
+image_creator_agent = Agent(
+    role="AI Visual Content Creator",
+    goal=(
+        "For each news article, generate a vivid cartoon-style illustration using "
+        "Google Imagen 3. The image must feature a cheerful small character wearing "
+        "sunglasses, pointing at the article topic. Return a mapping of article title "
+        "to local image file path."
+    ),
+    backstory=(
+        "You are a creative AI illustrator specializing in infographic-style cartoon art. "
+        "You distill complex news topics into visually engaging illustrations that stop "
+        "the scroll on social media. Your style is always bright, friendly, and on-brand: "
+        "a cartoon mascot with sunglasses guiding the viewer through the key information."
+    ),
+    llm=llm,
+    tools=[image_gen_tool],
+    verbose=True,
+    allow_delegation=False,
+    max_iter=10,
+)
+
 publisher_agent = Agent(
     role="Social Media Publisher",
     goal=(
-        "Take the platform-optimized content from the Content Writer and publish "
-        "each post to its target platform: X, Facebook, Instagram, and LinkedIn."
+        "Take the platform-optimized content and generated images, then publish "
+        "each post to its target platform: X, Facebook (with image), Instagram, and LinkedIn."
     ),
     backstory=(
         "You are a meticulous digital publisher responsible for scheduling and "
         "distributing content across social channels. You ensure every post reaches "
-        "its intended platform exactly as written, log the outcome of each post, "
-        "and report a clear summary of what was published and any errors."
+        "its intended platform exactly as written, attach images to Facebook posts, "
+        "log the outcome of each post, and report a clear summary of results."
     ),
     llm=llm,
     tools=[post_x_tool, post_fb_tool, post_ig_tool, post_li_tool],
@@ -135,22 +159,48 @@ task_write_content = Task(
         "4. LinkedIn — Professional tone. 3-5 sentences. Include a key insight or "
         "   business implication. End with a thought-leadership question followed by the URL.\n\n"
         "IMPORTANT: Every post must include the original article URL as a source link.\n\n"
-        "Format your output as structured sections clearly labeled per article and per platform."
+        "Format your output as structured sections clearly labeled per article and per platform. "
+        "For each article, include a line: 'Article Title: [exact title]' and "
+        "'Article Summary: [2-sentence summary]' at the top of its section."
     ),
     expected_output=(
-        "A structured document with clearly labeled sections for each article "
-        "containing 4 platform-specific posts (X, Facebook, Instagram, LinkedIn)."
+        "A structured document with clearly labeled sections for each article. "
+        "Each section starts with 'Article Title:' and 'Article Summary:', "
+        "followed by 4 platform-specific posts (X, Facebook, Instagram, LinkedIn)."
     ),
     agent=content_writer_agent,
     output_file="content_draft.md",
 )
 
+task_generate_images = Task(
+    description=(
+        "Read the content draft produced by the Content Writer. "
+        "For EACH article in the draft, extract the 'Article Title' and 'Article Summary', "
+        "then call the 'Generate Article Image' tool to create a cartoon illustration.\n\n"
+        "The tool will save the image locally and return a file path.\n\n"
+        "After generating all images, output a mapping document with:\n"
+        "  Article Title: [title]\n"
+        "  Image Path: [local file path returned by the tool]\n\n"
+        "Repeat for every article. If image generation fails for one article, "
+        "log the error and continue with the next."
+    ),
+    expected_output=(
+        "A mapping document listing each article title and its corresponding "
+        "generated image file path (e.g., 'images/article_name.png')."
+    ),
+    agent=image_creator_agent,
+    context=[task_write_content],
+    output_file="image_mapping.md",
+)
+
 task_publish = Task(
     description=(
-        "Read the platform-specific content produced by the Content Writer.\n\n"
-        "For each article's content, publish to ALL 4 platforms using the posting tools:\n"
+        "Read the platform-specific content from the Content Writer and the image "
+        "mapping from the Image Creator.\n\n"
+        "For each article's content, publish to ALL 4 platforms:\n"
         "  - Use 'Post to X (Twitter)' for the X post\n"
-        "  - Use 'Post to Facebook' for the Facebook post\n"
+        "  - Use 'Post to Facebook' for the Facebook post — ALWAYS include the "
+        "    image_path from the image mapping for this article\n"
         "  - Use 'Post to Instagram' for the Instagram post (provide image_url if available)\n"
         "  - Use 'Post to LinkedIn' for the LinkedIn post\n\n"
         "After all posts are attempted, produce a publishing report summarizing:\n"
@@ -161,10 +211,10 @@ task_publish = Task(
     ),
     expected_output=(
         "A publishing report listing every post attempted, its platform, "
-        "success/failure status, and post IDs for successful publications."
+        "success/failure status, image used (for Facebook), and post IDs."
     ),
     agent=publisher_agent,
-    context=[task_write_content],
+    context=[task_write_content, task_generate_images],
     output_file="publishing_report.md",
 )
 
@@ -173,8 +223,8 @@ task_publish = Task(
 # ════════════════════════════════════════════════════════════════════════════
 
 crew = Crew(
-    agents=[content_writer_agent, publisher_agent],
-    tasks=[task_write_content, task_publish],
+    agents=[content_writer_agent, image_creator_agent, publisher_agent],
+    tasks=[task_write_content, task_generate_images, task_publish],
     process=Process.sequential,
     verbose=True,
     memory=False,
@@ -200,6 +250,8 @@ if __name__ == "__main__":
     print("\n" + "═" * 60)
     print("   Pipeline Complete")
     print("═" * 60)
-    print("\nContent draft saved to: content_draft.md")
-    print("Publishing report saved to: publishing_report.md\n")
+    print("\nContent draft  → content_draft.md")
+    print("Image mapping  → image_mapping.md")
+    print("Images         → images/")
+    print("Publishing log → publishing_report.md\n")
     print(result)
