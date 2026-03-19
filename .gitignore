@@ -13,8 +13,11 @@ venv/
 
 # Output files
 content_draft.md
+content_draft_p2.md
 publishing_report.md
+publishing_report_p2.md
 image_mapping.md
+image_mapping_p2.md
 images/
 
 # OS

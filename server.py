@@ -21,7 +21,9 @@ _run_queue: queue.Queue = queue.Queue()
 _is_running = threading.Event()
 
 
-def stream_process(topic: str, language: str, articles: int, dry_run: bool):
+def stream_process(topic: str, language: str, articles: int,
+                   topic2: str, language2: str, articles2: int,
+                   dry_run: bool):
     """Run main.py as subprocess and push stdout/stderr lines to the queue."""
     _is_running.set()
     _run_queue.queue.clear()
@@ -32,6 +34,8 @@ def stream_process(topic: str, language: str, articles: int, dry_run: bool):
         "--language", language,
         "--articles", str(articles),
     ]
+    if topic2.strip():
+        cmd += ["--topic2", topic2, "--language2", language2, "--articles2", str(articles2)]
     if dry_run:
         cmd.append("--dry-run")
 
@@ -68,14 +72,17 @@ def run_pipeline():
         return jsonify({"error": "Pipeline is already running."}), 409
 
     data = request.get_json()
-    topic    = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
-    language = data.get("language", "en").strip() or "en"
-    articles = int(data.get("articles", 3))
-    dry_run  = bool(data.get("dry_run", False))
+    topic     = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
+    language  = data.get("language", "en").strip() or "en"
+    articles  = int(data.get("articles", 3))
+    topic2    = data.get("topic2", "").strip()
+    language2 = data.get("language2", "en").strip() or "en"
+    articles2 = int(data.get("articles2", 3))
+    dry_run   = bool(data.get("dry_run", False))
 
     thread = threading.Thread(
         target=stream_process,
-        args=(topic, language, articles, dry_run),
+        args=(topic, language, articles, topic2, language2, articles2, dry_run),
         daemon=True,
     )
     thread.start()
@@ -107,11 +114,12 @@ def status():
 
 @app.route("/results")
 def results():
-    draft_path  = BASE_DIR / "content_draft.md"
-    report_path = BASE_DIR / "publishing_report.md"
+    def read(p): return p.read_text() if p.exists() else None
     return jsonify({
-        "draft":  draft_path.read_text()  if draft_path.exists()  else None,
-        "report": report_path.read_text() if report_path.exists() else None,
+        "draft":    read(BASE_DIR / "content_draft.md"),
+        "report":   read(BASE_DIR / "publishing_report.md"),
+        "draft2":   read(BASE_DIR / "content_draft_p2.md"),
+        "report2":  read(BASE_DIR / "publishing_report_p2.md"),
     })
 
 

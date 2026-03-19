@@ -217,15 +217,13 @@
 <div class="layout">
   <!-- Sidebar -->
   <aside class="sidebar">
-    <div>
-      <h2>Pipeline Config</h2>
-    </div>
+    <!-- Page 1 -->
+    <div><h2>Facebook Page 1</h2></div>
 
     <div>
       <label for="topic">News Topic</label>
       <input type="text" id="topic" value="technology artificial intelligence" placeholder="e.g. climate tech" />
     </div>
-
     <div>
       <label for="language">Language</label>
       <select id="language">
@@ -237,18 +235,48 @@
         <option value="ja">Japanese</option>
       </select>
     </div>
-
     <div>
       <label for="articles">Articles to fetch</label>
       <input type="number" id="articles" value="3" min="1" max="5" />
     </div>
 
-    <div class="toggle-row">
-      <label style="margin:0">Dry run (simulate posts)</label>
-      <label class="toggle">
-        <input type="checkbox" id="dryRun" />
-        <span class="slider"></span>
-      </label>
+    <!-- Divider -->
+    <div style="border-top:1px solid #1e2535;padding-top:16px;">
+      <h2 style="margin-bottom:14px;">
+        Facebook Page 2
+        <span style="font-size:0.65rem;color:#4a5568;font-weight:400;"> — optional</span>
+      </h2>
+    </div>
+
+    <div>
+      <label for="topic2">News Topic</label>
+      <input type="text" id="topic2" value="" placeholder="e.g. healthcare, finance… (leave empty to skip)" />
+    </div>
+    <div>
+      <label for="language2">Language</label>
+      <select id="language2">
+        <option value="en">English</option>
+        <option value="fr">French</option>
+        <option value="es">Spanish</option>
+        <option value="de">German</option>
+        <option value="pt">Portuguese</option>
+        <option value="ja">Japanese</option>
+      </select>
+    </div>
+    <div>
+      <label for="articles2">Articles to fetch</label>
+      <input type="number" id="articles2" value="3" min="1" max="5" />
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid #1e2535;padding-top:16px;">
+      <div class="toggle-row">
+        <label style="margin:0">Dry run (simulate posts)</label>
+        <label class="toggle">
+          <input type="checkbox" id="dryRun" />
+          <span class="slider"></span>
+        </label>
+      </div>
     </div>
 
     <button id="runBtn" onclick="runPipeline()">
@@ -266,8 +294,10 @@
   <main class="main">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('log')">Live Log</div>
-      <div class="tab" onclick="switchTab('draft')">Content Draft</div>
-      <div class="tab" onclick="switchTab('report')">Publishing Report</div>
+      <div class="tab" onclick="switchTab('draft')">Page 1 Draft</div>
+      <div class="tab" onclick="switchTab('report')">Page 1 Report</div>
+      <div class="tab" onclick="switchTab('draft2')">Page 2 Draft</div>
+      <div class="tab" onclick="switchTab('report2')">Page 2 Report</div>
     </div>
 
     <div class="tab-panels">
@@ -296,21 +326,43 @@
           </div>
         </div>
       </div>
+      <div class="panel" id="draft2Panel">
+        <div id="draft2Content" class="md-content">
+          <div class="empty-state">
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <p>No Page 2 draft yet.<br/>Set a Page 2 topic and run the pipeline.</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="report2Panel">
+        <div id="report2Content" class="md-content">
+          <div class="empty-state">
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            <p>No Page 2 report yet.<br/>Set a Page 2 topic and run the pipeline.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
 
 <script>
   let evtSource = null;
+  const TAB_NAMES  = ["log", "draft", "report", "draft2", "report2"];
+  const PANEL_IDS  = ["logPanel", "draftPanel", "reportPanel", "draft2Panel", "report2Panel"];
 
   function switchTab(name) {
     document.querySelectorAll(".tab").forEach((t, i) => {
-      const names = ["log", "draft", "report"];
-      t.classList.toggle("active", names[i] === name);
+      t.classList.toggle("active", TAB_NAMES[i] === name);
     });
     document.querySelectorAll(".panel").forEach((p, i) => {
-      const names = ["logPanel", "draftPanel", "reportPanel"];
-      p.classList.toggle("active", names[i] === name + "Panel");
+      p.classList.toggle("active", PANEL_IDS[i] === name + "Panel");
     });
   }
 
@@ -337,10 +389,13 @@
   }
 
   async function runPipeline() {
-    const topic    = document.getElementById("topic").value.trim();
-    const language = document.getElementById("language").value;
-    const articles = parseInt(document.getElementById("articles").value) || 3;
-    const dry_run  = document.getElementById("dryRun").checked;
+    const topic     = document.getElementById("topic").value.trim();
+    const language  = document.getElementById("language").value;
+    const articles  = parseInt(document.getElementById("articles").value) || 3;
+    const topic2    = document.getElementById("topic2").value.trim();
+    const language2 = document.getElementById("language2").value;
+    const articles2 = parseInt(document.getElementById("articles2").value) || 3;
+    const dry_run   = document.getElementById("dryRun").checked;
 
     // Clear log
     document.getElementById("logOutput").innerHTML = "";
@@ -355,7 +410,7 @@
     const res = await fetch("/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, language, articles, dry_run }),
+      body: JSON.stringify({ topic, language, articles, topic2, language2, articles2, dry_run }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -397,15 +452,10 @@
     const res  = await fetch("/results");
     const data = await res.json();
 
-    const draftEl  = document.getElementById("draftContent");
-    const reportEl = document.getElementById("reportContent");
-
-    if (data.draft) {
-      draftEl.innerHTML = marked.parse(data.draft);
-    }
-    if (data.report) {
-      reportEl.innerHTML = marked.parse(data.report);
-    }
+    if (data.draft)   document.getElementById("draftContent").innerHTML   = marked.parse(data.draft);
+    if (data.report)  document.getElementById("reportContent").innerHTML  = marked.parse(data.report);
+    if (data.draft2)  document.getElementById("draft2Content").innerHTML  = marked.parse(data.draft2);
+    if (data.report2) document.getElementById("report2Content").innerHTML = marked.parse(data.report2);
   }
 
   // Load any existing results on page load

@@ -218,3 +218,55 @@ class PostToLinkedInTool(BaseTool):
             return f"Successfully posted to LinkedIn! Post ID: {post_id}"
         except requests.RequestException as e:
             return f"ERROR posting to LinkedIn: {e}"
+
+
+# ── Facebook Page 2 Tool ──────────────────────────────────────────────────────
+
+class PostToFacebookPage2Tool(BaseTool):
+    name: str = "Post to Facebook Page 2"
+    description: str = (
+        "Posts content to the second Facebook Page (FACEBOOK_PAGE_ID_2 / FACEBOOK_PAGE_TOKEN_2). "
+        "If image_path is provided, the post will include the image as a photo post."
+    )
+    args_schema: type[BaseModel] = FacebookPostInput
+
+    def _run(self, content: str, image_path: str = "") -> str:
+        page_id    = os.environ.get("FACEBOOK_PAGE_ID_2")
+        page_token = os.environ.get("FACEBOOK_PAGE_TOKEN_2")
+
+        if not all([page_id, page_token]):
+            return (
+                "SIMULATED POST TO FACEBOOK PAGE 2:\n"
+                f"{content}\n"
+                f"Image: {image_path or '(no image)'}\n\n"
+                "[Set FACEBOOK_PAGE_ID_2 and FACEBOOK_PAGE_TOKEN_2 in .env to enable real posting]"
+            )
+
+        try:
+            if image_path and os.path.isfile(image_path):
+                url = f"https://graph.facebook.com/v25.0/{page_id}/photos"
+                with open(image_path, "rb") as img_file:
+                    files = {
+                        "source":       (os.path.basename(image_path), img_file, "image/png"),
+                        "message":      (None, content),
+                        "access_token": (None, page_token),
+                    }
+                    response = requests.post(url, files=files, timeout=30)
+            else:
+                url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
+                files = {
+                    "message":      (None, content),
+                    "access_token": (None, page_token),
+                }
+                response = requests.post(url, files=files, timeout=15)
+
+            if not response.ok:
+                detail = response.json().get("error", {})
+                return (
+                    f"ERROR posting to Facebook Page 2: {response.status_code} — "
+                    f"{detail.get('message', response.text)}"
+                )
+            post_id = response.json().get("id", response.json().get("post_id", "unknown"))
+            return f"Successfully posted to Facebook Page 2! Post ID: {post_id}"
+        except requests.RequestException as e:
+            return f"ERROR posting to Facebook Page 2: {e}"

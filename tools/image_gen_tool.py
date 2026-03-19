@@ -1,14 +1,13 @@
 """
-Image Generation Tool
-=====================
-Generates a cartoon-style illustration for a news article.
+Image Generation Tools
+======================
+Two tools:
+  - GenerateImageTool          : artistic scene, person with laptop (Page 1)
+  - GenerateProfessionalImageTool : profession-based person matching the topic (Page 2)
 
 Providers (tried in order):
-  1. Hugging Face Inference API — free with HF_API_TOKEN (huggingface.co → Settings → Access Tokens)
-     Model: black-forest-labs/FLUX.1-schnell
-  2. Pollinations.ai — completely free, no auth needed (fallback when HF not configured)
-
-Saves the image locally and returns the file path.
+  1. Hugging Face Inference API — free with HF_API_TOKEN
+  2. Pollinations.ai            — no auth fallback
 """
 
 import os
@@ -134,7 +133,7 @@ class GenerateImageTool(BaseTool):
                 "Get a free token at huggingface.co → Settings → Access Tokens."
             )
 
-    def _save_image(self, content: bytes, title: str) -> str:
+    def _save_image(self, content: bytes, title: str, suffix: str = "") -> str:
         images_dir = Path("images")
         images_dir.mkdir(exist_ok=True)
 
@@ -142,8 +141,149 @@ class GenerateImageTool(BaseTool):
             "".join(c if c.isalnum() or c in " -_" else "" for c in title)
             [:50].strip().replace(" ", "_")
         )
-        image_path = images_dir / f"{safe_title}.png"
+        image_path = images_dir / f"{safe_title}{suffix}.png"
         image_path.write_bytes(content)
 
         print(f"[ImageGen] Saved: {image_path} ({len(content):,} bytes)")
+        return str(image_path)
+
+
+# ── Topic → Profession mapping ────────────────────────────────────────────────
+
+PROFESSION_MAP = [
+    (["health", "medical", "medicine", "hospital", "doctor", "pharma", "biotech"],
+     "a doctor in a white coat"),
+    (["finance", "bank", "invest", "stock", "crypto", "economy", "market", "trading"],
+     "a financial analyst in business attire"),
+    (["tech", "ai", "software", "code", "robot", "machine learning", "data", "cyber"],
+     "a software engineer"),
+    (["law", "legal", "court", "justice", "regulation", "policy"],
+     "a lawyer in formal attire"),
+    (["education", "school", "university", "student", "teacher", "learning"],
+     "a teacher"),
+    (["environment", "climate", "energy", "green", "solar", "sustainable"],
+     "an environmental scientist outdoors"),
+    (["sport", "athlete", "football", "basketball", "tennis", "olympic"],
+     "a professional athlete"),
+    (["food", "chef", "restaurant", "culinary", "nutrition"],
+     "a chef in a kitchen apron"),
+    (["art", "music", "film", "culture", "creative", "design"],
+     "a creative artist"),
+    (["space", "nasa", "astronaut", "rocket", "satellite"],
+     "an astronaut in a space suit"),
+    (["politic", "government", "election", "president", "senator"],
+     "a politician at a podium"),
+    (["science", "research", "lab", "experiment", "biology", "chemistry", "physics"],
+     "a scientist in a laboratory"),
+]
+
+PROFESSIONAL_SCENES = [
+    "at a busy city office with floor-to-ceiling windows",
+    "in a modern minimalist workspace with natural light",
+    "at a rooftop terrace with a city skyline at dusk",
+    "in a cozy library surrounded by books",
+    "at a seaside cafe with the ocean in the background",
+    "in a futuristic glass building lobby",
+    "at a conference table with colleagues",
+    "in a creative studio with exposed brick walls",
+    "outdoors in a vibrant urban plaza",
+    "in a high-tech control room with multiple screens",
+    "at a standing desk in a loft apartment",
+    "in a botanical garden during golden hour",
+]
+
+
+class ProfessionalImageInput(BaseModel):
+    article_title: str = Field(description="The title of the news article")
+    article_summary: str = Field(description="A brief summary of the article content")
+    page_topic: str = Field(description="The overall topic of this Facebook page (e.g. 'healthcare', 'finance')")
+
+
+class GenerateProfessionalImageTool(BaseTool):
+    name: str = "Generate Professional Article Image"
+    description: str = (
+        "Generates an artistic image of a professional person whose role matches the page topic. "
+        "The person is placed in a random professional scene. "
+        "Returns the local file path of the saved PNG image."
+    )
+    args_schema: type[BaseModel] = ProfessionalImageInput
+
+    def _run(self, article_title: str, article_summary: str, page_topic: str) -> str:
+        import random
+
+        # Infer profession from topic
+        topic_lower = page_topic.lower() + " " + article_title.lower()
+        profession = "a professional expert"
+        for keywords, prof in PROFESSION_MAP:
+            if any(kw in topic_lower for kw in keywords):
+                profession = prof
+                break
+
+        scene = random.choice(PROFESSIONAL_SCENES)
+
+        prompt = (
+            f"artistic digital painting, rich vivid colors, cinematic lighting, "
+            f"{profession} working confidently, "
+            f"setting: {scene}, "
+            "professional atmosphere, sharp focus on the person, "
+            "soft bokeh background, highly detailed, photorealistic style, no text"
+        )
+
+        hf_token = os.environ.get("HF_API_TOKEN")
+        suffix = "_p2"
+
+        if hf_token:
+            return self._generate_huggingface(prompt, article_title, hf_token, suffix)
+        else:
+            return self._generate_pollinations(prompt, article_title, suffix)
+
+    def _generate_huggingface(self, prompt: str, title: str, token: str, suffix: str = "") -> str:
+        print(f"[ImageGen-P2] Using Hugging Face FLUX.1-schnell for: {title}")
+        headers = {"Authorization": f"Bearer {token}"}
+        payload = {
+            "inputs": prompt,
+            "parameters": {"width": 1024, "height": 1024, "num_inference_steps": 4},
+        }
+
+        for attempt in range(3):
+            try:
+                response = requests.post(HF_URL, headers=headers, json=payload, timeout=120)
+                if response.status_code == 503:
+                    wait = response.json().get("estimated_time", 20)
+                    print(f"[ImageGen-P2] Model loading, waiting {wait:.0f}s...")
+                    time.sleep(min(wait, 30))
+                    continue
+                response.raise_for_status()
+                if "image" not in response.headers.get("content-type", ""):
+                    return f"ERROR: Unexpected content-type: {response.headers.get('content-type')}"
+                return self._save_image(response.content, title, suffix)
+            except requests.RequestException as e:
+                if attempt == 2:
+                    return f"ERROR (Hugging Face P2): {e}"
+                time.sleep(5)
+        return "ERROR: Hugging Face P2 failed after 3 attempts."
+
+    def _generate_pollinations(self, prompt: str, title: str, suffix: str = "") -> str:
+        short_prompt = prompt[:300].replace(",", "").replace("  ", " ")
+        encoded = quote(short_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+        try:
+            response = requests.get(url, timeout=120)
+            response.raise_for_status()
+            if "image" not in response.headers.get("content-type", ""):
+                return "ERROR: Pollinations returned non-image."
+            return self._save_image(response.content, title, suffix)
+        except Exception as e:
+            return f"ERROR (Pollinations P2): {e}"
+
+    def _save_image(self, content: bytes, title: str, suffix: str = "") -> str:
+        images_dir = Path("images")
+        images_dir.mkdir(exist_ok=True)
+        safe_title = (
+            "".join(c if c.isalnum() or c in " -_" else "" for c in title)
+            [:50].strip().replace(" ", "_")
+        )
+        image_path = images_dir / f"{safe_title}{suffix}.png"
+        image_path.write_bytes(content)
+        print(f"[ImageGen-P2] Saved: {image_path} ({len(content):,} bytes)")
         return str(image_path)
