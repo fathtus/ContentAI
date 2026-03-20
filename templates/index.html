@@ -42,11 +42,30 @@
       padding: 24px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
       overflow-y: auto;
     }
 
     .sidebar h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #718096; }
+
+    .pipeline-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border: 1px solid #1e2535;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .pipeline-section.page1 { border-color: #2d3748; }
+    .pipeline-section.page2 { border-color: #2d3748; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .section-header h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #718096; }
 
     label { display: block; font-size: 0.85rem; color: #a0aec0; margin-bottom: 6px; }
     input[type="text"], input[type="number"], select {
@@ -86,31 +105,52 @@
     .toggle input:checked + .slider { background: #4c51bf; }
     .toggle input:checked + .slider::before { transform: translateX(20px); }
 
-    #runBtn {
+    .run-btn {
       width: 100%;
-      padding: 11px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
+      padding: 10px;
       color: #fff;
       border: none;
       border-radius: 8px;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
-    #runBtn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-    #runBtn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .run-btn.page1-btn { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .run-btn.page2-btn { background: linear-gradient(135deg, #f093fb, #f5576c); }
+    .run-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
     .spinner {
       display: none;
-      width: 14px; height: 14px;
+      width: 13px; height: 13px;
       border: 2px solid rgba(255,255,255,0.3);
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
-      margin: 0 auto;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-line {
+      font-size: 0.78rem;
+      color: #4a5568;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #718096; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.running { background: #f6ad55; animation: pulse 1s infinite; }
+    .status-dot.done    { background: #68d391; }
+    .status-dot.error   { background: #fc8181; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
     /* ── Main content ── */
     .main {
@@ -127,13 +167,14 @@
       gap: 4px;
     }
     .tab {
-      padding: 12px 18px;
-      font-size: 0.85rem;
+      padding: 12px 16px;
+      font-size: 0.82rem;
       color: #718096;
       cursor: pointer;
       border-bottom: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s;
       user-select: none;
+      white-space: nowrap;
     }
     .tab:hover { color: #a0aec0; }
     .tab.active { color: #a78bfa; border-bottom-color: #a78bfa; }
@@ -142,15 +183,15 @@
     .panel { display: none; height: 100%; overflow-y: auto; padding: 24px; }
     .panel.active { display: block; }
 
-    /* Log panel */
-    #logPanel {
+    /* Log panels */
+    .log-panel {
       background: #0c0e14;
       font-family: "JetBrains Mono", "Fira Code", monospace;
       font-size: 0.8rem;
       line-height: 1.6;
       color: #94a3b8;
     }
-    #logOutput { white-space: pre-wrap; word-break: break-word; }
+    .log-output { white-space: pre-wrap; word-break: break-word; }
     .log-done  { color: #68d391; }
     .log-error { color: #fc8181; }
     .log-info  { color: #63b3ed; }
@@ -195,16 +236,10 @@
     .empty-state svg { opacity: 0.3; }
     .empty-state p { font-size: 0.9rem; }
 
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #718096; display: inline-block;
-      margin-right: 6px;
-      transition: background 0.3s;
+    .dry-run-row {
+      border-top: 1px solid #1e2535;
+      padding-top: 12px;
     }
-    .status-dot.running { background: #f6ad55; animation: pulse 1s infinite; }
-    .status-dot.done    { background: #68d391; }
-    .status-dot.error   { background: #fc8181; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
   </style>
 </head>
 <body>
@@ -217,92 +252,112 @@
 <div class="layout">
   <!-- Sidebar -->
   <aside class="sidebar">
+
     <!-- Page 1 -->
-    <div><h2>Facebook Page 1</h2></div>
+    <div class="pipeline-section page1">
+      <div class="section-header">
+        <h2>Facebook Page 1</h2>
+      </div>
 
-    <div>
-      <label for="topic">News Topic</label>
-      <input type="text" id="topic" value="technology artificial intelligence" placeholder="e.g. climate tech" />
-    </div>
-    <div>
-      <label for="language">Language</label>
-      <select id="language">
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="es">Spanish</option>
-        <option value="de">German</option>
-        <option value="pt">Portuguese</option>
-        <option value="ja">Japanese</option>
-      </select>
-    </div>
-    <div>
-      <label for="articles">Articles to fetch</label>
-      <input type="number" id="articles" value="3" min="1" max="5" />
-    </div>
-
-    <!-- Divider -->
-    <div style="border-top:1px solid #1e2535;padding-top:16px;">
-      <h2 style="margin-bottom:14px;">
-        Facebook Page 2
-        <span style="font-size:0.65rem;color:#4a5568;font-weight:400;"> — optional</span>
-      </h2>
-    </div>
-
-    <div>
-      <label for="topic2">News Topic</label>
-      <input type="text" id="topic2" value="" placeholder="e.g. healthcare, finance… (leave empty to skip)" />
-    </div>
-    <div>
-      <label for="language2">Language</label>
-      <select id="language2">
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="es">Spanish</option>
-        <option value="de">German</option>
-        <option value="pt">Portuguese</option>
-        <option value="ja">Japanese</option>
-      </select>
-    </div>
-    <div>
-      <label for="articles2">Articles to fetch</label>
-      <input type="number" id="articles2" value="3" min="1" max="5" />
-    </div>
-
-    <!-- Divider -->
-    <div style="border-top:1px solid #1e2535;padding-top:16px;">
-      <div class="toggle-row">
-        <label style="margin:0">Dry run (simulate posts)</label>
-        <label class="toggle">
-          <input type="checkbox" id="dryRun" />
-          <span class="slider"></span>
-        </label>
+      <div>
+        <label for="topic">News Topic</label>
+        <input type="text" id="topic" value="technology artificial intelligence" placeholder="e.g. climate tech" />
+      </div>
+      <div>
+        <label for="language">Language</label>
+        <select id="language">
+          <option value="en">English</option>
+          <option value="fr">French</option>
+          <option value="es">Spanish</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="ja">Japanese</option>
+        </select>
+      </div>
+      <div>
+        <label for="articles">Articles to fetch</label>
+        <input type="number" id="articles" value="3" min="1" max="5" />
+      </div>
+      <div class="dry-run-row">
+        <div class="toggle-row">
+          <label style="margin:0">Dry run</label>
+          <label class="toggle">
+            <input type="checkbox" id="dryRun1" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <button id="runBtn1" class="run-btn page1-btn" onclick="runPage1()">
+        <div class="spinner" id="spinner1"></div>
+        <span id="btnText1">Run Page 1 Pipeline</span>
+      </button>
+      <div class="status-line">
+        <span class="status-dot" id="statusDot1"></span>
+        <span id="statusText1">Idle</span>
       </div>
     </div>
 
-    <button id="runBtn" onclick="runPipeline()">
-      <span id="btnText">Run Pipeline</span>
-      <div class="spinner" id="spinner"></div>
-    </button>
+    <!-- Page 2 -->
+    <div class="pipeline-section page2">
+      <div class="section-header">
+        <h2>Facebook Page 2</h2>
+        <span style="font-size:0.65rem;color:#4a5568;">optional</span>
+      </div>
 
-    <div style="font-size:0.8rem; color:#4a5568; line-height:1.5;">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">Idle</span>
+      <div>
+        <label for="topic2">News Topic</label>
+        <input type="text" id="topic2" value="" placeholder="e.g. healthcare, finance…" />
+      </div>
+      <div>
+        <label for="language2">Language</label>
+        <select id="language2">
+          <option value="en">English</option>
+          <option value="fr">French</option>
+          <option value="es">Spanish</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="ja">Japanese</option>
+        </select>
+      </div>
+      <div>
+        <label for="articles2">Articles to fetch</label>
+        <input type="number" id="articles2" value="3" min="1" max="5" />
+      </div>
+      <div class="dry-run-row">
+        <div class="toggle-row">
+          <label style="margin:0">Dry run</label>
+          <label class="toggle">
+            <input type="checkbox" id="dryRun2" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <button id="runBtn2" class="run-btn page2-btn" onclick="runPage2()">
+        <div class="spinner" id="spinner2"></div>
+        <span id="btnText2">Run Page 2 Pipeline</span>
+      </button>
+      <div class="status-line">
+        <span class="status-dot" id="statusDot2"></span>
+        <span id="statusText2">Idle</span>
+      </div>
     </div>
+
   </aside>
 
   <!-- Main -->
   <main class="main">
     <div class="tabs">
-      <div class="tab active" onclick="switchTab('log')">Live Log</div>
+      <div class="tab active" onclick="switchTab('log1')">Page 1 Log</div>
       <div class="tab" onclick="switchTab('draft')">Page 1 Draft</div>
       <div class="tab" onclick="switchTab('report')">Page 1 Report</div>
+      <div class="tab" onclick="switchTab('log2')">Page 2 Log</div>
       <div class="tab" onclick="switchTab('draft2')">Page 2 Draft</div>
       <div class="tab" onclick="switchTab('report2')">Page 2 Report</div>
     </div>
 
     <div class="tab-panels">
-      <div class="panel active" id="logPanel">
-        <div id="logOutput"><span class="log-info">Ready. Configure the pipeline and click Run.</span></div>
+      <div class="panel log-panel active" id="log1Panel">
+        <div id="log1Output" class="log-output"><span class="log-info">Ready. Configure Page 1 and click Run.</span></div>
       </div>
       <div class="panel" id="draftPanel">
         <div id="draftContent" class="md-content">
@@ -311,7 +366,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
-            <p>No content draft yet.<br/>Run the pipeline to generate posts.</p>
+            <p>No content draft yet.<br/>Run Page 1 to generate posts.</p>
           </div>
         </div>
       </div>
@@ -322,9 +377,12 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
             </svg>
-            <p>No publishing report yet.<br/>Run the pipeline to see results.</p>
+            <p>No publishing report yet.<br/>Run Page 1 to see results.</p>
           </div>
         </div>
+      </div>
+      <div class="panel log-panel" id="log2Panel">
+        <div id="log2Output" class="log-output"><span class="log-info">Ready. Configure Page 2 and click Run.</span></div>
       </div>
       <div class="panel" id="draft2Panel">
         <div id="draft2Content" class="md-content">
@@ -333,7 +391,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
-            <p>No Page 2 draft yet.<br/>Set a Page 2 topic and run the pipeline.</p>
+            <p>No Page 2 draft yet.<br/>Run Page 2 to generate posts.</p>
           </div>
         </div>
       </div>
@@ -344,7 +402,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
             </svg>
-            <p>No Page 2 report yet.<br/>Set a Page 2 topic and run the pipeline.</p>
+            <p>No Page 2 report yet.<br/>Run Page 2 to see results.</p>
           </div>
         </div>
       </div>
@@ -353,9 +411,11 @@
 </div>
 
 <script>
-  let evtSource = null;
-  const TAB_NAMES  = ["log", "draft", "report", "draft2", "report2"];
-  const PANEL_IDS  = ["logPanel", "draftPanel", "reportPanel", "draft2Panel", "report2Panel"];
+  const TAB_NAMES = ["log1", "draft", "report", "log2", "draft2", "report2"];
+  const PANEL_IDS = ["log1Panel", "draftPanel", "reportPanel", "log2Panel", "draft2Panel", "report2Panel"];
+
+  let evtSource1 = null;
+  let evtSource2 = null;
 
   function switchTab(name) {
     document.querySelectorAll(".tab").forEach((t, i) => {
@@ -366,100 +426,135 @@
     });
   }
 
-  function setStatus(state, text) {
-    const dot = document.getElementById("statusDot");
-    dot.className = "status-dot " + state;
-    document.getElementById("statusText").textContent = text;
+  function setStatus(n, state, text) {
+    document.getElementById("statusDot" + n).className = "status-dot " + state;
+    document.getElementById("statusText" + n).textContent = text;
   }
 
-  function appendLog(text, cls = "") {
-    const out = document.getElementById("logOutput");
+  function appendLog(n, text, cls = "") {
+    const out = document.getElementById("log" + n + "Output");
     const line = document.createElement("span");
     if (cls) line.className = cls;
     line.textContent = text + "\n";
     out.appendChild(line);
-    document.getElementById("logPanel").scrollTop = 999999;
+    document.getElementById("log" + n + "Panel").scrollTop = 999999;
   }
 
-  function setRunning(running) {
-    const btn = document.getElementById("runBtn");
-    btn.disabled = running;
-    document.getElementById("btnText").style.display = running ? "none" : "inline";
-    document.getElementById("spinner").style.display = running ? "block" : "none";
+  function setRunning(n, running) {
+    document.getElementById("runBtn" + n).disabled = running;
+    document.getElementById("btnText" + n).style.display = running ? "none" : "inline";
+    document.getElementById("spinner" + n).style.display = running ? "block" : "none";
   }
 
-  async function runPipeline() {
-    const topic     = document.getElementById("topic").value.trim();
-    const language  = document.getElementById("language").value;
-    const articles  = parseInt(document.getElementById("articles").value) || 3;
-    const topic2    = document.getElementById("topic2").value.trim();
-    const language2 = document.getElementById("language2").value;
-    const articles2 = parseInt(document.getElementById("articles2").value) || 3;
-    const dry_run   = document.getElementById("dryRun").checked;
+  function subscribeSSE(n, url, onDone) {
+    const src = new EventSource(url);
+    src.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "ping" || msg.type === "connected") return;
+      if (msg.type === "log")   appendLog(n, msg.data);
+      if (msg.type === "done")  {
+        appendLog(n, msg.data, "log-done");
+        src.close();
+        setRunning(n, false);
+        setStatus(n, "done", "Done");
+        onDone();
+      }
+      if (msg.type === "error") {
+        appendLog(n, msg.data, "log-error");
+        src.close();
+        setRunning(n, false);
+        setStatus(n, "error", "Failed");
+      }
+    };
+    src.onerror = () => {
+      appendLog(n, "Stream disconnected.", "log-error");
+      src.close();
+      setRunning(n, false);
+      setStatus(n, "error", "Disconnected");
+    };
+    return src;
+  }
 
-    // Clear log
-    document.getElementById("logOutput").innerHTML = "";
-    setRunning(true);
-    setStatus("running", "Running…");
-    switchTab("log");
+  async function runPage1() {
+    const topic    = document.getElementById("topic").value.trim();
+    const language = document.getElementById("language").value;
+    const articles = parseInt(document.getElementById("articles").value) || 3;
+    const dry_run  = document.getElementById("dryRun1").checked;
 
-    // Close previous SSE
-    if (evtSource) { evtSource.close(); evtSource = null; }
+    document.getElementById("log1Output").innerHTML = "";
+    setRunning(1, true);
+    setStatus(1, "running", "Running…");
+    switchTab("log1");
 
-    // Start pipeline
-    const res = await fetch("/run", {
+    if (evtSource1) { evtSource1.close(); evtSource1 = null; }
+
+    const res = await fetch("/run/page1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, language, articles, topic2, language2, articles2, dry_run }),
+      body: JSON.stringify({ topic, language, articles, dry_run }),
     });
     if (!res.ok) {
       const err = await res.json();
-      appendLog("ERROR: " + (err.error || "Unknown error"), "log-error");
-      setRunning(false);
-      setStatus("error", "Error");
+      appendLog(1, "ERROR: " + (err.error || "Unknown error"), "log-error");
+      setRunning(1, false);
+      setStatus(1, "error", "Error");
       return;
     }
 
-    // Subscribe to SSE stream
-    evtSource = new EventSource("/stream");
-    evtSource.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === "ping" || msg.type === "connected") return;
-      if (msg.type === "log")   appendLog(msg.data);
-      if (msg.type === "done")  {
-        appendLog(msg.data, "log-done");
-        evtSource.close();
-        setRunning(false);
-        setStatus("done", "Done");
-        loadResults();
-      }
-      if (msg.type === "error") {
-        appendLog(msg.data, "log-error");
-        evtSource.close();
-        setRunning(false);
-        setStatus("error", "Failed");
-      }
-    };
-    evtSource.onerror = () => {
-      appendLog("Stream disconnected.", "log-error");
-      evtSource.close();
-      setRunning(false);
-      setStatus("error", "Disconnected");
-    };
+    evtSource1 = subscribeSSE(1, "/stream/page1", loadPage1Results);
   }
 
-  async function loadResults() {
+  async function runPage2() {
+    const topic2    = document.getElementById("topic2").value.trim();
+    const language2 = document.getElementById("language2").value;
+    const articles2 = parseInt(document.getElementById("articles2").value) || 3;
+    const dry_run   = document.getElementById("dryRun2").checked;
+
+    if (!topic2) {
+      alert("Please enter a topic for Page 2.");
+      return;
+    }
+
+    document.getElementById("log2Output").innerHTML = "";
+    setRunning(2, true);
+    setStatus(2, "running", "Running…");
+    switchTab("log2");
+
+    if (evtSource2) { evtSource2.close(); evtSource2 = null; }
+
+    const res = await fetch("/run/page2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic2, language2, articles2, dry_run }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      appendLog(2, "ERROR: " + (err.error || "Unknown error"), "log-error");
+      setRunning(2, false);
+      setStatus(2, "error", "Error");
+      return;
+    }
+
+    evtSource2 = subscribeSSE(2, "/stream/page2", loadPage2Results);
+  }
+
+  async function loadPage1Results() {
     const res  = await fetch("/results");
     const data = await res.json();
+    if (data.draft)  document.getElementById("draftContent").innerHTML  = marked.parse(data.draft);
+    if (data.report) document.getElementById("reportContent").innerHTML = marked.parse(data.report);
+  }
 
-    if (data.draft)   document.getElementById("draftContent").innerHTML   = marked.parse(data.draft);
-    if (data.report)  document.getElementById("reportContent").innerHTML  = marked.parse(data.report);
+  async function loadPage2Results() {
+    const res  = await fetch("/results");
+    const data = await res.json();
     if (data.draft2)  document.getElementById("draft2Content").innerHTML  = marked.parse(data.draft2);
     if (data.report2) document.getElementById("report2Content").innerHTML = marked.parse(data.report2);
   }
 
   // Load any existing results on page load
-  loadResults();
+  loadPage1Results();
+  loadPage2Results();
 </script>
 </body>
 </html>

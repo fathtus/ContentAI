@@ -16,29 +16,18 @@ from flask import Flask, render_template, request, Response, jsonify
 app = Flask(__name__)
 BASE_DIR = Path(__file__).parent
 
-# Shared state
-_run_queue: queue.Queue = queue.Queue()
-_is_running = threading.Event()
+# Independent state per pipeline
+_queue1: queue.Queue = queue.Queue()
+_running1 = threading.Event()
+
+_queue2: queue.Queue = queue.Queue()
+_running2 = threading.Event()
 
 
-def stream_process(topic: str, language: str, articles: int,
-                   topic2: str, language2: str, articles2: int,
-                   dry_run: bool):
+def _stream_process(q: queue.Queue, event: threading.Event, cmd: list):
     """Run main.py as subprocess and push stdout/stderr lines to the queue."""
-    _is_running.set()
-    _run_queue.queue.clear()
-
-    cmd = [
-        sys.executable, str(BASE_DIR / "main.py"),
-        "--topic", topic,
-        "--language", language,
-        "--articles", str(articles),
-    ]
-    if topic2.strip():
-        cmd += ["--topic2", topic2, "--language2", language2, "--articles2", str(articles2)]
-    if dry_run:
-        cmd.append("--dry-run")
-
+    event.set()
+    q.queue.clear()
     try:
         proc = subprocess.Popen(
             cmd,
@@ -49,16 +38,16 @@ def stream_process(topic: str, language: str, articles: int,
             cwd=str(BASE_DIR),
         )
         for line in proc.stdout:
-            _run_queue.put({"type": "log", "data": line.rstrip()})
+            q.put({"type": "log", "data": line.rstrip()})
         proc.wait()
         if proc.returncode == 0:
-            _run_queue.put({"type": "done", "data": "Pipeline completed successfully."})
+            q.put({"type": "done", "data": "Pipeline completed successfully."})
         else:
-            _run_queue.put({"type": "error", "data": f"Process exited with code {proc.returncode}"})
+            q.put({"type": "error", "data": f"Process exited with code {proc.returncode}"})
     except Exception as e:
-        _run_queue.put({"type": "error", "data": str(e)})
+        q.put({"type": "error", "data": str(e)})
     finally:
-        _is_running.clear()
+        event.clear()
 
 
 @app.route("/")
@@ -66,50 +55,94 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/run", methods=["POST"])
-def run_pipeline():
-    if _is_running.is_set():
-        return jsonify({"error": "Pipeline is already running."}), 409
+@app.route("/run/page1", methods=["POST"])
+def run_page1():
+    if _running1.is_set():
+        return jsonify({"error": "Page 1 pipeline is already running."}), 409
 
     data = request.get_json()
-    topic     = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
-    language  = data.get("language", "en").strip() or "en"
-    articles  = int(data.get("articles", 3))
+    topic    = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
+    language = data.get("language", "en").strip() or "en"
+    articles = int(data.get("articles", 3))
+    dry_run  = bool(data.get("dry_run", False))
+
+    cmd = [
+        sys.executable, str(BASE_DIR / "main.py"),
+        "--topic", topic,
+        "--language", language,
+        "--articles", str(articles),
+        "--skip-page1",  # only page 1 crew, no page 2
+    ]
+    # Remove --skip-page1 since this IS page 1; we pass no --topic2 so page 2 is skipped naturally
+    cmd = [
+        sys.executable, str(BASE_DIR / "main.py"),
+        "--topic", topic,
+        "--language", language,
+        "--articles", str(articles),
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+
+    threading.Thread(target=_stream_process, args=(_queue1, _running1, cmd), daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/run/page2", methods=["POST"])
+def run_page2():
+    if _running2.is_set():
+        return jsonify({"error": "Page 2 pipeline is already running."}), 409
+
+    data = request.get_json()
     topic2    = data.get("topic2", "").strip()
     language2 = data.get("language2", "en").strip() or "en"
     articles2 = int(data.get("articles2", 3))
     dry_run   = bool(data.get("dry_run", False))
 
-    thread = threading.Thread(
-        target=stream_process,
-        args=(topic, language, articles, topic2, language2, articles2, dry_run),
-        daemon=True,
-    )
-    thread.start()
+    if not topic2:
+        return jsonify({"error": "Page 2 topic is required."}), 400
+
+    cmd = [
+        sys.executable, str(BASE_DIR / "main.py"),
+        "--topic", "placeholder",   # required arg but skipped via --skip-page1
+        "--topic2", topic2,
+        "--language2", language2,
+        "--articles2", str(articles2),
+        "--skip-page1",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+
+    threading.Thread(target=_stream_process, args=(_queue2, _running2, cmd), daemon=True).start()
     return jsonify({"status": "started"})
 
 
-@app.route("/stream")
-def stream():
-    """SSE endpoint — pushes log lines to the browser in real time."""
-    def generate():
-        yield "data: {\"type\": \"connected\"}\n\n"
-        while True:
-            try:
-                msg = _run_queue.get(timeout=30)
-                yield f"data: {json.dumps(msg)}\n\n"
-                if msg["type"] in ("done", "error"):
-                    break
-            except queue.Empty:
-                yield "data: {\"type\": \"ping\"}\n\n"
+def _sse_generator(q: queue.Queue):
+    yield "data: {\"type\": \"connected\"}\n\n"
+    while True:
+        try:
+            msg = q.get(timeout=30)
+            yield f"data: {json.dumps(msg)}\n\n"
+            if msg["type"] in ("done", "error"):
+                break
+        except queue.Empty:
+            yield "data: {\"type\": \"ping\"}\n\n"
 
-    return Response(generate(), mimetype="text/event-stream",
+
+@app.route("/stream/page1")
+def stream_page1():
+    return Response(_sse_generator(_queue1), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/stream/page2")
+def stream_page2():
+    return Response(_sse_generator(_queue2), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/status")
 def status():
-    return jsonify({"running": _is_running.is_set()})
+    return jsonify({"running1": _running1.is_set(), "running2": _running2.is_set()})
 
 
 @app.route("/results")

@@ -62,6 +62,7 @@ parser.add_argument("--topic2",    default="", help="Page 2 news topic (leave em
 parser.add_argument("--language2", default="en", help="Page 2 language code")
 parser.add_argument("--articles2", type=int, default=3, help="Page 2 articles to fetch (1-5)")
 parser.add_argument("--dry-run", action="store_true", help="Simulate posts without publishing")
+parser.add_argument("--skip-page1", action="store_true", help="Skip Page 1 pipeline (run Page 2 only)")
 args = parser.parse_args()
 
 has_page2 = bool(args.topic2.strip())
@@ -260,17 +261,27 @@ if has_page2:
     page2_tasks  = [task_write2, task_generate_images2, task_publish2]
 
 # ════════════════════════════════════════════════════════════════════════════
-#  CREW
+#  CREWS  (two independent pipelines — Page 1 and Page 2)
 # ════════════════════════════════════════════════════════════════════════════
 
-crew = Crew(
-    agents=[content_writer_agent, image_creator_agent, publisher_agent] + page2_agents,
-    tasks=[task_write_content, task_generate_images, task_publish] + page2_tasks,
+crew1 = Crew(
+    agents=[content_writer_agent, image_creator_agent, publisher_agent],
+    tasks=[task_write_content, task_generate_images, task_publish],
     process=Process.sequential,
     verbose=True,
     memory=False,
     max_rpm=15,
 )
+
+if has_page2:
+    crew2 = Crew(
+        agents=[content_writer2_agent, image_creator2_agent, publisher2_agent],
+        tasks=[task_write2, task_generate_images2, task_publish2],
+        process=Process.sequential,
+        verbose=True,
+        memory=False,
+        max_rpm=15,
+    )
 
 # ════════════════════════════════════════════════════════════════════════════
 #  ENTRYPOINT
@@ -288,13 +299,24 @@ if __name__ == "__main__":
     print(f"   Dry run        : {args.dry_run}")
     print("═" * 60 + "\n")
 
-    result = crew.kickoff()
+    if not args.skip_page1:
+        print("═" * 60)
+        print("   Running Page 1 Pipeline")
+        print("═" * 60 + "\n")
+        result1 = crew1.kickoff()
+        print("\n" + "═" * 60)
+        print("   Page 1 Pipeline Complete")
+        print("═" * 60)
+        print("\nPage 1 → content_draft.md | image_mapping.md | publishing_report.md\n")
+        print(result1)
 
-    print("\n" + "═" * 60)
-    print("   Pipeline Complete")
-    print("═" * 60)
-    print("\nPage 1 → content_draft.md | image_mapping.md | publishing_report.md")
     if has_page2:
-        print("Page 2 → content_draft_p2.md | image_mapping_p2.md | publishing_report_p2.md")
-    print()
-    print(result)
+        print("\n" + "═" * 60)
+        print("   Running Page 2 Pipeline")
+        print("═" * 60 + "\n")
+        result2 = crew2.kickoff()
+        print("\n" + "═" * 60)
+        print("   Page 2 Pipeline Complete")
+        print("═" * 60)
+        print("\nPage 2 → content_draft_p2.md | image_mapping_p2.md | publishing_report_p2.md\n")
+        print(result2)
