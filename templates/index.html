@@ -240,6 +240,29 @@
       border-top: 1px solid #1e2535;
       padding-top: 12px;
     }
+
+    .platform-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 2px;
+    }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #a0aec0;
+      cursor: pointer;
+      margin: 0;
+    }
+    .check-item input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      accent-color: #667eea;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -277,6 +300,22 @@
       <div>
         <label for="articles">Articles to fetch</label>
         <input type="number" id="articles" value="3" min="1" max="5" />
+      </div>
+      <div>
+        <label>Platforms</label>
+        <div class="platform-checks">
+          <label class="check-item"><input type="checkbox" name="platform1" value="facebook" checked /> Facebook</label>
+          <label class="check-item"><input type="checkbox" name="platform1" value="x" /> X (Twitter)</label>
+          <label class="check-item"><input type="checkbox" name="platform1" value="instagram" /> Instagram</label>
+          <label class="check-item"><input type="checkbox" name="platform1" value="linkedin" /> LinkedIn</label>
+        </div>
+      </div>
+      <div>
+        <label>Content Rewriter</label>
+        <div class="platform-checks">
+          <label class="check-item"><input type="radio" name="rewriter1" value="gemini" checked /> Gemini</label>
+          <label class="check-item"><input type="radio" name="rewriter1" value="mistral" /> Qwen</label>
+        </div>
       </div>
       <div class="dry-run-row">
         <div class="toggle-row">
@@ -322,6 +361,13 @@
       <div>
         <label for="articles2">Articles to fetch</label>
         <input type="number" id="articles2" value="3" min="1" max="5" />
+      </div>
+      <div>
+        <label>Content Rewriter</label>
+        <div class="platform-checks">
+          <label class="check-item"><input type="radio" name="rewriter2" value="gemini" checked /> Gemini</label>
+          <label class="check-item"><input type="radio" name="rewriter2" value="mistral" /> Qwen</label>
+        </div>
       </div>
       <div class="dry-run-row">
         <div class="toggle-row">
@@ -476,10 +522,17 @@
   }
 
   async function runPage1() {
-    const topic    = document.getElementById("topic").value.trim();
-    const language = document.getElementById("language").value;
-    const articles = parseInt(document.getElementById("articles").value) || 3;
-    const dry_run  = document.getElementById("dryRun1").checked;
+    const topic     = document.getElementById("topic").value.trim();
+    const language  = document.getElementById("language").value;
+    const articles  = parseInt(document.getElementById("articles").value) || 3;
+    const dry_run   = document.getElementById("dryRun1").checked;
+    const platforms = [...document.querySelectorAll('input[name="platform1"]:checked')].map(cb => cb.value);
+    const rewriter  = document.querySelector('input[name="rewriter1"]:checked').value;
+
+    if (platforms.length === 0) {
+      alert("Please select at least one platform.");
+      return;
+    }
 
     document.getElementById("log1Output").innerHTML = "";
     setRunning(1, true);
@@ -491,7 +544,7 @@
     const res = await fetch("/run/page1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, language, articles, dry_run }),
+      body: JSON.stringify({ topic, language, articles, dry_run, platforms, rewriter }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -509,6 +562,7 @@
     const language2 = document.getElementById("language2").value;
     const articles2 = parseInt(document.getElementById("articles2").value) || 3;
     const dry_run   = document.getElementById("dryRun2").checked;
+    const rewriter  = document.querySelector('input[name="rewriter2"]:checked').value;
 
     if (!topic2) {
       alert("Please enter a topic for Page 2.");
@@ -525,7 +579,7 @@
     const res = await fetch("/run/page2", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic2, language2, articles2, dry_run }),
+      body: JSON.stringify({ topic2, language2, articles2, dry_run, rewriter }),
     });
     if (!res.ok) {
       const err = await res.json();

@@ -27,9 +27,9 @@ class FacebookPostInput(BaseModel):
 
 class InstagramPostInput(BaseModel):
     content: str = Field(description="The caption text for the Instagram post")
-    image_url: str = Field(
+    image_path: str = Field(
         default="",
-        description="Public URL of image to attach (required for Instagram feed posts)"
+        description="Local file path to the PNG/JPG image to attach (required for Instagram feed posts)",
     )
 
 
@@ -137,20 +137,36 @@ class PostToInstagramTool(BaseTool):
     )
     args_schema: type[BaseModel] = InstagramPostInput
 
-    def _run(self, content: str, image_url: str = "") -> str:
+    def _run(self, content: str, image_path: str = "") -> str:
         ig_user_id  = os.environ.get("INSTAGRAM_BUSINESS_ACCOUNT_ID")
-        page_token  = os.environ.get("FACEBOOK_PAGE_TOKEN")
+        page_token  = os.environ.get("INSTAGRAM_ACCESS_TOKEN")
 
         if not all([ig_user_id, page_token]):
             return (
                 "SIMULATED POST TO INSTAGRAM:\n"
                 f"Caption: {content}\n"
-                f"Image: {image_url or '(no image)'}\n\n"
-                "[Set INSTAGRAM_BUSINESS_ACCOUNT_ID and FACEBOOK_PAGE_TOKEN in .env to enable real posting]"
+                f"Image: {image_path or '(no image)'}\n\n"
+                "[Set INSTAGRAM_BUSINESS_ACCOUNT_ID and INSTAGRAM_ACCESS_TOKEN in .env to enable real posting]"
             )
 
-        if not image_url:
-            return "ERROR: Instagram feed posts require an image_url."
+        if not image_path:
+            return "ERROR: Instagram feed posts require an image_path."
+
+        # Upload local image to get a public URL (required by Instagram Graph API)
+        try:
+            with open(image_path, "rb") as f:
+                upload_res = requests.post(
+                    "https://tmpfiles.org/api/v1/upload",
+                    files={"file": f},
+                    timeout=30,
+                )
+            upload_res.raise_for_status()
+            raw_url = upload_res.json()["data"]["url"]
+            # tmpfiles.org returns https://tmpfiles.org/12345/file.png
+            # direct-download URL is https://tmpfiles.org/dl/12345/file.png
+            image_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+        except Exception as e:
+            return f"ERROR uploading image for Instagram: {e}"
 
         try:
             # Step 1: Create media container
@@ -172,7 +188,13 @@ class PostToInstagramTool(BaseTool):
             media_id = publish_res.json().get("id", "unknown")
             return f"Successfully posted to Instagram! Media ID: {media_id}"
         except requests.RequestException as e:
-            return f"ERROR posting to Instagram: {e}"
+            detail = ""
+            if hasattr(e, "response") and e.response is not None:
+                try:
+                    detail = e.response.json()
+                except Exception:
+                    detail = e.response.text
+            return f"ERROR posting to Instagram: {e} | Details: {detail}"
 
 
 # ── LinkedIn Tool ─────────────────────────────────────────────────────────────

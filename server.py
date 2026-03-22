@@ -61,24 +61,22 @@ def run_page1():
         return jsonify({"error": "Page 1 pipeline is already running."}), 409
 
     data = request.get_json()
-    topic    = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
-    language = data.get("language", "en").strip() or "en"
-    articles = int(data.get("articles", 3))
-    dry_run  = bool(data.get("dry_run", False))
+    topic     = data.get("topic", "technology artificial intelligence").strip() or "technology artificial intelligence"
+    language  = data.get("language", "en").strip() or "en"
+    articles  = int(data.get("articles", 3))
+    dry_run   = bool(data.get("dry_run", False))
+    platforms = data.get("platforms", ["facebook", "x", "instagram", "linkedin"])
+    rewriter  = data.get("rewriter", "gemini")
+    if not platforms:
+        platforms = ["facebook", "x", "instagram", "linkedin"]
 
     cmd = [
         sys.executable, str(BASE_DIR / "main.py"),
         "--topic", topic,
         "--language", language,
         "--articles", str(articles),
-        "--skip-page1",  # only page 1 crew, no page 2
-    ]
-    # Remove --skip-page1 since this IS page 1; we pass no --topic2 so page 2 is skipped naturally
-    cmd = [
-        sys.executable, str(BASE_DIR / "main.py"),
-        "--topic", topic,
-        "--language", language,
-        "--articles", str(articles),
+        "--platforms", ",".join(platforms),
+        "--rewriter", rewriter,
     ]
     if dry_run:
         cmd.append("--dry-run")
@@ -97,6 +95,7 @@ def run_page2():
     language2 = data.get("language2", "en").strip() or "en"
     articles2 = int(data.get("articles2", 3))
     dry_run   = bool(data.get("dry_run", False))
+    rewriter  = data.get("rewriter", "gemini")
 
     if not topic2:
         return jsonify({"error": "Page 2 topic is required."}), 400
@@ -108,6 +107,7 @@ def run_page2():
         "--language2", language2,
         "--articles2", str(articles2),
         "--skip-page1",
+        "--rewriter", rewriter,
     ]
     if dry_run:
         cmd.append("--dry-run")

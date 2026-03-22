@@ -26,6 +26,7 @@ from tools import (
     NewsDataTool,
     GenerateImageTool,
     GenerateProfessionalImageTool,
+    RewritePostTool,
     PostToXTool,
     PostToFacebookTool,
     PostToFacebookPage2Tool,
@@ -63,22 +64,31 @@ parser.add_argument("--language2", default="en", help="Page 2 language code")
 parser.add_argument("--articles2", type=int, default=3, help="Page 2 articles to fetch (1-5)")
 parser.add_argument("--dry-run", action="store_true", help="Simulate posts without publishing")
 parser.add_argument("--skip-page1", action="store_true", help="Skip Page 1 pipeline (run Page 2 only)")
+parser.add_argument("--platforms", default="facebook,x,instagram,linkedin", help="Comma-separated platforms for Page 1")
+parser.add_argument("--rewriter", default="gemini", choices=["gemini", "mistral"], help="Content rewriter: gemini or mistral")
 args = parser.parse_args()
 
 has_page2 = bool(args.topic2.strip())
+
+# ── Page 1 platform selection ──────────────────────────────────────────────────
+_ALL_PLATFORMS = ["x", "facebook", "instagram", "linkedin"]
+_PLATFORM_LABELS = {"x": "X (Twitter)", "facebook": "Facebook", "instagram": "Instagram", "linkedin": "LinkedIn"}
+platforms = set(p.strip() for p in args.platforms.split(",") if p.strip())
+platform_list_str = ", ".join(_PLATFORM_LABELS[p] for p in _ALL_PLATFORMS if p in platforms)
 
 if args.dry_run:
     print("\n[DRY RUN MODE] Posts will be simulated, not published.\n")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 llm = LLM(
-    model="gemini/gemini-3-flash-preview",
+    model="gemini/gemini-2.5-flash",
     api_key=os.environ["GOOGLE_API_KEY"],
     temperature=0.7,
 )
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 news_tool        = NewsDataTool()
+rewrite_tool     = RewritePostTool() if args.rewriter == "mistral" else None
 image_gen_tool   = GenerateImageTool()
 image_pro_tool   = GenerateProfessionalImageTool()
 post_x_tool      = PostToXTool()
@@ -94,15 +104,15 @@ post_li_tool     = PostToLinkedInTool()
 content_writer_agent = Agent(
     role="Social Media Content Writer",
     goal=(
-        "Fetch the latest news on the given topic and rewrite each article "
-        "into 4 distinct, platform-optimized posts for X, Facebook, Instagram, and LinkedIn."
+        f"Fetch the latest news on the given topic and rewrite each article "
+        f"into platform-optimized posts for: {platform_list_str}."
     ),
     backstory=(
         "You are a seasoned social media strategist with 10 years of experience. "
         "X needs punchy hooks (≤280 chars), Facebook is conversational, "
         "Instagram is visual-first with hashtags, LinkedIn is professional thought-leadership."
     ),
-    llm=llm, tools=[news_tool], verbose=True, allow_delegation=False, max_iter=8,
+    llm=llm, tools=[t for t in [news_tool, rewrite_tool] if t], verbose=True, allow_delegation=False, max_iter=8,
 )
 
 image_creator_agent = Agent(
@@ -115,14 +125,17 @@ image_creator_agent = Agent(
     llm=llm, tools=[image_gen_tool], verbose=True, allow_delegation=False, max_iter=10,
 )
 
+_publisher_tool_map = {"x": post_x_tool, "facebook": post_fb_tool, "instagram": post_ig_tool, "linkedin": post_li_tool}
+publisher_tools = [_publisher_tool_map[p] for p in _ALL_PLATFORMS if p in platforms]
+
 publisher_agent = Agent(
     role="Social Media Publisher",
-    goal="Publish content + images to X, Facebook Page 1 (with image), Instagram, and LinkedIn.",
+    goal=f"Publish content + images to: {platform_list_str}.",
     backstory=(
         "You distribute content to all platforms, attach AI-generated images to Facebook posts, "
         "and report a clear summary of every outcome."
     ),
-    llm=llm, tools=[post_x_tool, post_fb_tool, post_ig_tool, post_li_tool],
+    llm=llm, tools=publisher_tools,
     verbose=True, allow_delegation=False, max_iter=10,
 )
 
@@ -130,18 +143,34 @@ publisher_agent = Agent(
 #  PAGE 1 TASKS
 # ════════════════════════════════════════════════════════════════════════════
 
+_write_instructions = []
+_num = 1
+if "x" in platforms:
+    _write_instructions.append(f"{_num}. X (Twitter) — ≤280 chars, hook-first, 1-2 hashtags, source URL."); _num += 1
+if "facebook" in platforms:
+    _write_instructions.append(f"{_num}. Facebook — 2-4 sentences, conversational, CTA, end with 'Read more: [URL]'."); _num += 1
+if "instagram" in platforms:
+    _write_instructions.append(f"{_num}. Instagram — visual-first, emojis, 5-10 hashtags, 'Source: [URL]'."); _num += 1
+if "linkedin" in platforms:
+    _write_instructions.append(f"{_num}. LinkedIn — professional, 3-5 sentences, thought-leadership question + URL."); _num += 1
+
+_rewriter_note = (
+    "For each platform post, use the 'Rewrite Post for Platform' tool "
+    "(pass the article summary as raw_content, the platform name, and the source URL)."
+    if args.rewriter == "mistral" else
+    "Write each platform post directly based on the article content."
+)
+
 task_write_content = Task(
     description=(
         f"Fetch the latest {args.articles} news article(s) on '{args.topic}' "
         f"(language: {args.language}) using the NewsData Fetcher tool.\n\n"
-        "For EACH article produce 4 platform posts:\n"
-        "1. X (Twitter) — ≤280 chars, hook-first, 1-2 hashtags, source URL.\n"
-        "2. Facebook — 2-4 sentences, conversational, CTA, end with 'Read more: [URL]'.\n"
-        "3. Instagram — visual-first, emojis, 5-10 hashtags, 'Source: [URL]'.\n"
-        "4. LinkedIn — professional, 3-5 sentences, thought-leadership question + URL.\n\n"
+        f"For EACH article produce posts for: {platform_list_str}:\n"
+        + "\n".join(_write_instructions) + "\n\n"
+        f"{_rewriter_note}\n\n"
         "Include 'Article Title: [title]' and 'Article Summary: [2 sentences]' at the top of each section."
     ),
-    expected_output="Structured document with Article Title, Article Summary, and 4 platform posts per article.",
+    expected_output=f"Structured document with Article Title, Article Summary, and platform posts ({platform_list_str}) per article.",
     agent=content_writer_agent,
     output_file="content_draft.md",
 )
@@ -158,17 +187,24 @@ task_generate_images = Task(
     output_file="image_mapping.md",
 )
 
+_publish_steps = []
+if "x" in platforms:
+    _publish_steps.append("  - 'Post to X (Twitter)' for the X post")
+if "facebook" in platforms:
+    _publish_steps.append("  - 'Post to Facebook' with the image_path from the mapping")
+if "instagram" in platforms:
+    _publish_steps.append("  - 'Post to Instagram' with the image_path from the mapping")
+if "linkedin" in platforms:
+    _publish_steps.append("  - 'Post to LinkedIn' for the LinkedIn post")
+
 task_publish = Task(
     description=(
-        "Read the content draft and image mapping.\n"
-        "For each article publish to ALL 4 platforms:\n"
-        "  - 'Post to X (Twitter)' for the X post\n"
-        "  - 'Post to Facebook' with the image_path from the mapping\n"
-        "  - 'Post to Instagram' for the Instagram post\n"
-        "  - 'Post to LinkedIn' for the LinkedIn post\n\n"
+        f"Read the content draft and image mapping.\n"
+        f"For each article publish to: {platform_list_str}:\n"
+        + "\n".join(_publish_steps) + "\n\n"
         "Produce a publishing report with total posts, successes (with IDs), and failures."
     ),
-    expected_output="Publishing report with status and post IDs for all platforms.",
+    expected_output=f"Publishing report with status and post IDs for: {platform_list_str}.",
     agent=publisher_agent,
     context=[task_write_content, task_generate_images],
     output_file="publishing_report.md",
