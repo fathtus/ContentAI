@@ -3,17 +3,20 @@ ContentAI — News-to-Social Media Pipeline
 ==========================================
 Pipeline:
   Page 1:
-    1. Content Writer   → fetch & rewrite news for X, Facebook, Instagram, LinkedIn
-    2. Image Creator    → artistic scene with person + laptop (nature scenes)
-    3. Publisher        → post to X, Facebook Page 1 (with image), Instagram, LinkedIn
+    1. Content Writer   → fetch news (NewsData) + rewrite per platform
+                          Rewriter: Gemini (direct) or Qwen via HuggingFace (RewritePostTool)
+                          Platforms: X, Facebook, Instagram, LinkedIn
+    2. Image Creator    → artistic scene with person + laptop (HuggingFace FLUX.1-schnell)
+    3. Publisher        → post to X, Facebook Page 1 (with image), Instagram (image uploaded
+                          to tmpfiles.org for public URL), LinkedIn
 
   Page 2 (optional — activated when --topic2 is provided):
     4. Content Writer 2 → fetch & rewrite news for Facebook Page 2
-    5. Image Creator 2  → professional person matching the page topic in various scenes
+    5. Image Creator 2  → professional person matching the page topic (HuggingFace FLUX.1-schnell)
     6. Publisher 2      → post to Facebook Page 2 (with image)
 
 Usage:
-  python main.py [--topic "AI news"] [--topic2 "healthcare"] [--dry-run]
+  python main.py [--topic "AI news"] [--topic2 "healthcare"] [--dry-run] [--rewriter gemini|qwen]
 """
 
 import os
@@ -65,7 +68,7 @@ parser.add_argument("--articles2", type=int, default=3, help="Page 2 articles to
 parser.add_argument("--dry-run", action="store_true", help="Simulate posts without publishing")
 parser.add_argument("--skip-page1", action="store_true", help="Skip Page 1 pipeline (run Page 2 only)")
 parser.add_argument("--platforms", default="facebook,x,instagram,linkedin", help="Comma-separated platforms for Page 1")
-parser.add_argument("--rewriter", default="gemini", choices=["gemini", "mistral"], help="Content rewriter: gemini or mistral")
+parser.add_argument("--rewriter", default="gemini", choices=["gemini", "qwen"], help="Content rewriter: gemini or qwen")
 args = parser.parse_args()
 
 has_page2 = bool(args.topic2.strip())
@@ -88,7 +91,7 @@ llm = LLM(
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 news_tool        = NewsDataTool()
-rewrite_tool     = RewritePostTool() if args.rewriter == "mistral" else None
+rewrite_tool     = RewritePostTool() if args.rewriter == "qwen" else None
 image_gen_tool   = GenerateImageTool()
 image_pro_tool   = GenerateProfessionalImageTool()
 post_x_tool      = PostToXTool()
@@ -157,7 +160,7 @@ if "linkedin" in platforms:
 _rewriter_note = (
     "For each platform post, use the 'Rewrite Post for Platform' tool "
     "(pass the article summary as raw_content, the platform name, and the source URL)."
-    if args.rewriter == "mistral" else
+    if args.rewriter == "qwen" else
     "Write each platform post directly based on the article content."
 )
 
